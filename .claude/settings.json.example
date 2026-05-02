@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "defaultMode": "auto"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/raise-konsole.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/raise-konsole.sh",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "notify-send 'Claude Code' 'Waiting for your input' --app-name='Claude Code' 2>/dev/null || true",
+            "async": true
+          }
+        ]
+      }
+    ]
+  },
+  "effortLevel": "high",
+  "skipAutoPermissionPrompt": true
+}
