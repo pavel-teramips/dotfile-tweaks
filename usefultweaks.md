@@ -33,6 +33,24 @@ On shell startup, `.zshrc` picks a random profile from the tint list and applies
 to the current session via D-Bus. Each profile references a matching `.colorscheme`
 file that is identical to Breeze Dark except for the `[Background]` color.
 
+### Requirements
+
+The snippet calls `qdbus6` to switch the active session's profile. On
+Debian/Ubuntu with KDE Plasma 6:
+
+```bash
+sudo apt install qdbus-qt6
+```
+
+That package installs the binary as `/usr/lib/qt6/bin/qdbus`, not `qdbus6`,
+so add a user-level symlink so the snippet finds it (`~/bin` is on `PATH`):
+
+```bash
+ln -s /usr/lib/qt6/bin/qdbus ~/bin/qdbus6
+```
+
+(Older KDE 5 systems use `qdbus` / `qdbus-qt5` — adjust the snippet if needed.)
+
 ### `~/.zshrc` snippet
 
 ```zsh
