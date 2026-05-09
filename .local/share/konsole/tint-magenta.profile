@@ -1,9 +1,9 @@
 [Appearance]
-ColorScheme=tint-neutral
+ColorScheme=tint-magenta
 Font=Monospace,11,-1,5,50,0,0,0,0,0
 
 [General]
-Name=tint-neutral
+Name=tint-magenta
 Parent=FALLBACK/
 LocalTabTitleFormat=%w
 RemoteTabTitleFormat=%w

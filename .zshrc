@@ -84,6 +84,8 @@ alias ll='eza -la --group-directories-first'
 alias la='eza -a'
 alias lt='eza --tree --level=2'
 alias bex='cd ~/dev/bex'
+alias teramips='ssh pavelr@sftp.teramips.com'
+alias bigbex1='ssh pavel@bigbex1.bexrobotics.com'
 alias grep='grep --color=auto'
 alias clip='xclip -selection clipboard'
 
@@ -109,6 +111,9 @@ mkcd() {
   mkdir -p -- "$1" && cd -- "$1"
 }
 
+# Set the Konsole tab/window title: `title my project`
+title() { printf '\033]0;%s\007' "$*"; }
+
 # ---------- Rust ----------
 [[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
 
@@ -127,7 +132,7 @@ fi
 # inherited by nested interactive shells — keeps the tint stable for the life
 # of the Konsole session. A fresh window starts with no marker → fresh roll.
 if [[ -n "$KONSOLE_DBUS_SESSION" && -n "$KONSOLE_DBUS_SERVICE" && -z "$KONSOLE_TINT_APPLIED" ]]; then
-    _tints=(tint-neutral tint-red tint-green tint-blue tint-purple tint-orange)
+    _tints=(tint-neutral tint-red tint-green tint-blue tint-purple tint-orange tint-yellow tint-cyan tint-magenta tint-teal tint-pink tint-olive)
     export KONSOLE_TINT_APPLIED="${_tints[$((RANDOM % ${#_tints[@]}+1))]}"
     qdbus6 "$KONSOLE_DBUS_SERVICE" "$KONSOLE_DBUS_SESSION" \
         org.kde.konsole.Session.setProfile "$KONSOLE_TINT_APPLIED" 2>/dev/null

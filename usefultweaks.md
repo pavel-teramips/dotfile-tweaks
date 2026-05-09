@@ -59,7 +59,7 @@ ln -s /usr/lib/qt6/bin/qdbus ~/bin/qdbus6
 # inherited by nested interactive shells — keeps the tint stable for the life
 # of the Konsole session. A fresh window starts with no marker → fresh roll.
 if [[ -n "$KONSOLE_DBUS_SESSION" && -n "$KONSOLE_DBUS_SERVICE" && -z "$KONSOLE_TINT_APPLIED" ]]; then
-    _tints=(tint-neutral tint-red tint-green tint-blue tint-purple tint-orange)
+    _tints=(tint-neutral tint-red tint-green tint-blue tint-purple tint-orange tint-yellow tint-cyan tint-magenta tint-teal tint-pink tint-olive)
     export KONSOLE_TINT_APPLIED="${_tints[$((RANDOM % ${#_tints[@]}+1))]}"
     qdbus6 "$KONSOLE_DBUS_SERVICE" "$KONSOLE_DBUS_SESSION" \
         org.kde.konsole.Session.setProfile "$KONSOLE_TINT_APPLIED" 2>/dev/null
@@ -75,8 +75,9 @@ letting each new window roll its own.
 
 ### Profiles — `~/.local/share/konsole/tint-<name>.profile`
 
-Each profile (tint-neutral, tint-red, tint-green, tint-blue, tint-purple, tint-orange)
-looks like this (only `Name` and `ColorScheme` differ):
+Each profile (tint-neutral, tint-red, tint-green, tint-blue, tint-purple,
+tint-orange, tint-yellow, tint-cyan, tint-magenta, tint-teal, tint-pink,
+tint-olive) looks like this (only `Name` and `ColorScheme` differ):
 
 ```ini
 [Appearance]
@@ -86,9 +87,16 @@ Font=Monospace,11,-1,5,50,0,0,0,0,0
 [General]
 Name=tint-red
 Parent=FALLBACK/
+LocalTabTitleFormat=%w
+RemoteTabTitleFormat=%w
 ```
 
 `tint-base.profile` uses `ColorScheme=Breeze` and serves as the template.
+
+The `LocalTabTitleFormat=%w` / `RemoteTabTitleFormat=%w` lines duplicate the
+setting from `Custom.profile` on purpose. Once the random-tint hook switches
+the session away from Custom into a tint profile, the tab title format would
+otherwise revert to FALLBACK and break the `title` helper described below.
 
 ### Color schemes — `~/.local/share/konsole/tint-<name>.colorscheme`
 
@@ -102,6 +110,12 @@ Full Breeze Dark palette, only `[Background] Color` differs per tint:
 | blue    | 35, 38, 58    |
 | purple  | 50, 38, 55    |
 | orange  | 52, 45, 35    |
+| yellow  | 55, 55, 39    |
+| cyan    | 35, 55, 58    |
+| magenta | 58, 38, 52    |
+| teal    | 38, 55, 55    |
+| pink    | 58, 45, 50    |
+| olive   | 52, 55, 38    |
 
 ---
 

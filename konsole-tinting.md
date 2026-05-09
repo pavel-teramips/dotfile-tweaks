@@ -7,18 +7,26 @@ tell windows apart when task-switching.
 
 ## What it looks like
 
-Six possible tints, all based on the Breeze Dark palette (`35,38,39` background):
+Twelve possible tints, all based on the Breeze Dark palette (`35,38,39` background):
 
 | Profile | Background tweak |
 |---------|-----------------|
 | `tint-neutral` | unchanged (`35,38,39`) |
 | `tint-red`     | `55,38,39` |
-| `tint-green`   | `35,58,39` |
-| `tint-blue`    | `35,38,59` |
-| `tint-purple`  | `55,38,59` |
-| `tint-orange`  | `55,48,35` |
+| `tint-green`   | `35,55,39` |
+| `tint-blue`    | `35,38,58` |
+| `tint-purple`  | `50,38,55` |
+| `tint-orange`  | `52,45,35` |
+| `tint-yellow`  | `55,55,39` |
+| `tint-cyan`    | `35,55,58` |
+| `tint-magenta` | `58,38,52` |
+| `tint-teal`    | `38,55,55` |
+| `tint-pink`    | `58,45,50` |
+| `tint-olive`   | `52,55,38` |
 
-The shift is only ~20 RGB counts — just enough to notice, not enough to look weird.
+Shifts are ~15–20 RGB counts — just enough to notice, not enough to look weird.
+The pool is intentionally large so several open windows are unlikely to collide
+on the same tint.
 
 ---
 
@@ -26,8 +34,8 @@ The shift is only ~20 RGB counts — just enough to notice, not enough to look w
 
 ### 1. Color schemes — `~/.local/share/konsole/tint-*.colorscheme`
 
-Each file is a full Breeze Dark color table with one channel shifted in the
-`[Background]` section. Konsole picks these up automatically from the user's
+Each file is a full Breeze Dark color table with the `[Background]` section's
+`Color` line shifted. Konsole picks these up automatically from the user's
 local share directory.
 
 ### 2. Profiles — `~/.local/share/konsole/tint-*.profile`
@@ -42,7 +50,16 @@ Font=Monospace,11,-1,5,50,0,0,0,0,0
 [General]
 Name=tint-red
 Parent=FALLBACK/
+LocalTabTitleFormat=%w
+RemoteTabTitleFormat=%w
 ```
+
+The `LocalTabTitleFormat=%w` / `RemoteTabTitleFormat=%w` lines aren't strictly
+needed for tinting itself — they're there so the `title` helper (see
+`usefultweaks.md`) keeps working after the random-tint hook switches the
+session to one of these profiles. Without them, the tab title format would
+revert to the FALLBACK default the moment the tint hook fires, and `title foo`
+would silently become a no-op.
 
 ### 3. The hook — `~/.zshrc`
 
@@ -53,7 +70,7 @@ this to `.zshrc`:
 
 ```zsh
 if [[ -n "$KONSOLE_DBUS_SESSION" && -n "$KONSOLE_DBUS_SERVICE" && -z "$KONSOLE_TINT_APPLIED" ]]; then
-    _tints=(tint-neutral tint-red tint-green tint-blue tint-purple tint-orange)
+    _tints=(tint-neutral tint-red tint-green tint-blue tint-purple tint-orange tint-yellow tint-cyan tint-magenta tint-teal tint-pink tint-olive)
     export KONSOLE_TINT_APPLIED="${_tints[$((RANDOM % ${#_tints[@]}+1))]}"
     qdbus6 "$KONSOLE_DBUS_SERVICE" "$KONSOLE_DBUS_SESSION" \
         org.kde.konsole.Session.setProfile "$KONSOLE_TINT_APPLIED" 2>/dev/null
@@ -103,6 +120,12 @@ The D-Bus hook in `.zshrc` sidesteps all of that entirely.
 ~/.local/share/konsole/tint-blue.colorscheme
 ~/.local/share/konsole/tint-purple.colorscheme
 ~/.local/share/konsole/tint-orange.colorscheme
+~/.local/share/konsole/tint-yellow.colorscheme
+~/.local/share/konsole/tint-cyan.colorscheme
+~/.local/share/konsole/tint-magenta.colorscheme
+~/.local/share/konsole/tint-teal.colorscheme
+~/.local/share/konsole/tint-pink.colorscheme
+~/.local/share/konsole/tint-olive.colorscheme
 
 ~/.local/share/konsole/tint-neutral.profile
 ~/.local/share/konsole/tint-red.profile
@@ -110,6 +133,12 @@ The D-Bus hook in `.zshrc` sidesteps all of that entirely.
 ~/.local/share/konsole/tint-blue.profile
 ~/.local/share/konsole/tint-purple.profile
 ~/.local/share/konsole/tint-orange.profile
+~/.local/share/konsole/tint-yellow.profile
+~/.local/share/konsole/tint-cyan.profile
+~/.local/share/konsole/tint-magenta.profile
+~/.local/share/konsole/tint-teal.profile
+~/.local/share/konsole/tint-pink.profile
+~/.local/share/konsole/tint-olive.profile
 
 ~/.local/share/applications/org.kde.konsole.desktop   (local desktop override)
 ~/.local/bin/konsole                                   (wrapper, used from CLI)
