@@ -87,6 +87,51 @@ Full Breeze Dark palette, only `[Background] Color` differs per tint:
 
 ---
 
+## Konsole: set tab title from the shell
+
+Run `title foo` in zsh and the Konsole tab/window title becomes `foo`.
+
+### Why this needs setup
+
+Shells set the title via the OSC escape sequence `\033]0;...\007`. Konsole
+ignores it unless its tab title format is `%w` (the shell-supplied title).
+The defaults are `%d : %n` (directory : program) for local shells and
+`%h : %u` for SSH sessions — neither honors `%w`.
+
+The built-in profile can't be edited to change those formats. You have to
+create a profile file and set it as the default in `konsolerc`.
+
+### `~/.local/share/konsole/Custom.profile`
+
+```ini
+[General]
+Name=Custom
+Parent=FALLBACK/
+LocalTabTitleFormat=%w
+RemoteTabTitleFormat=%w
+```
+
+### `~/.config/konsolerc`
+
+Add this section (anywhere — typically at the top):
+
+```ini
+[Desktop Entry]
+DefaultProfile=Custom.profile
+```
+
+### `~/.zshrc` snippet
+
+```zsh
+# Set the Konsole tab/window title: `title my project`
+title() { printf '\033]0;%s\007' "$*"; }
+```
+
+Open a new Konsole window after the profile/konsolerc changes — already-open
+windows keep the old default and won't pick up the new format.
+
+---
+
 ## Shell aliases and functions (`~/.zshrc`)
 
 ### Navigation
