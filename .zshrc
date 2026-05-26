@@ -135,7 +135,7 @@ if [[ -n "$KONSOLE_DBUS_SESSION" && -n "$KONSOLE_DBUS_SERVICE" && -z "$KONSOLE_T
     _tints=(tint-neutral tint-red tint-green tint-blue tint-purple tint-orange tint-yellow tint-cyan tint-magenta tint-teal tint-pink tint-olive)
     export KONSOLE_TINT_APPLIED="${_tints[$((RANDOM % ${#_tints[@]}+1))]}"
     qdbus6 "$KONSOLE_DBUS_SERVICE" "$KONSOLE_DBUS_SESSION" \
-        org.kde.konsole.Session.setProfile "$KONSOLE_TINT_APPLIED" 2>/dev/null
+        org.kde.konsole.Session.setProfile "$KONSOLE_TINT_APPLIED" >/dev/null 2>&1
     unset _tints
 fi
 
