@@ -421,3 +421,202 @@ else
         --method org.freedesktop.Application.Activate '{}' >/dev/null 2>&1 || true
 fi
 ```
+
+## Claude Code: freeze/restore all sessions across a reboot
+
+Reboot without resuming a dozen Claude windows one by one. `claude-freeze`
+snapshots every running session to `~/.claude/session-snapshot.tsv`; after the
+reboot `claude-restore` reopens each one in its own Konsole window running
+`claude --resume <session-id>`, in its original working directory.
+
+Usage: run `claude-freeze`, eyeball the printed table, reboot, run
+`claude-restore` from any terminal.
+
+### How sessions are identified
+
+Which claudes are *running* is exact: `pgrep` + `/proc/<pid>/cwd`, so an exited
+claude cannot appear. Which *session id* each process owns is not exposed by
+Claude Code — it is absent from the process environment, its open file
+descriptors (only the pty, epoll/eventfd handles and the binary) and its
+children. So freeze infers it: for each working directory it takes the N most
+recently modified transcripts in `~/.claude/projects/<munged-path>/`, N being
+the number of claude processes running there. Each row prints the transcript's
+last-modified time and first user message — check those against your open
+windows before rebooting.
+
+Rejected alternative: scanning each process's memory (`/proc/<pid>/mem`) for
+`<uuid>.jsonl` strings and taking the most frequent. It needs root, and it is
+wrong — a session id that merely appears in a conversation's *text* outranks
+the session's own id. Tested on 11 live sessions: 9 agreed with the timestamp
+method, and where ground truth was known the memory scan was the wrong one.
+
+An exact method exists if you want it later: a SessionStart/SessionEnd hook
+pair writing pid→session-id into `~/.claude/live-sessions/`. It only helps
+sessions started after the hooks are installed, which is why it isn't used
+here.
+
+### Two annoyances handled by claude-restore
+
+- **Workspace trust dialog.** Trust lives in `~/.claude.json` under
+  `.projects["<dir>"].hasTrustDialogAccepted`. Restore pre-sets it to `true`
+  for every directory in the snapshot (backup at `~/.claude.json.bak`), so 11
+  windows don't each stop on "do you trust this folder?". It only does this
+  when no claude is running — right after a reboot nothing else is writing
+  that file, so there's no clobber risk.
+- **Konsole Qt noise.** `Unsupported return type 4097 QPixmap in method
+  "grab"` is a harmless warning Konsole prints on startup; the launches
+  redirect it so it doesn't land in the terminal you ran restore from.
+
+### `~/.local/bin/claude-freeze`
+
+```zsh
+#!/usr/bin/env zsh
+# claude-freeze — snapshot all running Claude Code sessions before a reboot.
+# Writes ~/.claude/session-snapshot.tsv (workdir <TAB> session-id <TAB> exact|guessed <TAB> preview).
+# Restore after reboot with: claude-restore
+#
+# Session identity comes from two sources:
+#   exact   — ~/.claude/live-sessions/ registry maintained by the SessionStart/
+#             SessionEnd hooks (session-registry.sh): pid <-> session id binding.
+#   guessed — for claudes with no registry entry (started before the hooks were
+#             installed): the N most recently modified transcripts in the
+#             directory's ~/.claude/projects/ folder. Verify via the preview.
+
+SNAP="$HOME/.claude/session-snapshot.tsv"
+REG="$HOME/.claude/live-sessions"
+
+# Running claude processes and their working directories (live kernel state —
+# an exited claude cannot appear here). Skips the chrome-native-host helper.
+typeset -A pid_cwd
+for pid in $(pgrep -f '^claude( |$)'); do
+  cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
+  pid_cwd[$pid]=$cwd
+done
+if (( ${#pid_cwd} == 0 )); then
+  echo "No running claude processes found — nothing to snapshot."
+  exit 1
+fi
+
+# Registry: oldest file first, so if one pid appears twice (e.g. after /clear
+# changed the session id) the newest registration wins. Entries whose pid is
+# gone are stale (crash/kill skipped SessionEnd) and get cleaned up.
+typeset -A pid_sid claimed_sid
+if [[ -d $REG ]]; then
+  for f in $(ls -tr "$REG" 2>/dev/null); do
+    IFS=$'\t' read -r rpid _rcwd < "$REG/$f"
+    if [[ -z ${pid_cwd[$rpid]:-} ]]; then
+      rm -f "$REG/$f"
+    else
+      pid_sid[$rpid]=$f
+    fi
+  done
+  for s in ${(v)pid_sid}; do claimed_sid[$s]=1; done
+fi
+
+preview() {  # $1 = transcript path -> "mtime | first user message"
+  local first mt
+  first=$(grep -a -m1 -o '"type":"user","message":{"role":"user","content":"[^"]\{1,60\}' "$1" 2>/dev/null | sed 's/.*content":"//')
+  mt=$(date -r "$1" '+%m-%d %H:%M' 2>/dev/null)
+  print -r -- "$mt | ${first:-(no text preview)}"
+}
+
+projdir() {  # $1 = cwd -> transcript dir (claude munges / and . to -)
+  print -r -- "$HOME/.claude/projects/${${1//\//-}//./-}"
+}
+
+: > "$SNAP"
+typeset -A fallback_count
+for pid in ${(k)pid_cwd}; do
+  cwd=${pid_cwd[$pid]}
+  if [[ -n ${pid_sid[$pid]:-} ]]; then
+    sid=${pid_sid[$pid]}
+    printf '%s\t%s\texact\t%s\n' "$cwd" "$sid" "$(preview "$(projdir $cwd)/$sid.jsonl")" >> "$SNAP"
+  else
+    fallback_count[$cwd]=$(( ${fallback_count[$cwd]:-0} + 1 ))
+  fi
+done
+
+for cwd in ${(k)fallback_count}; do
+  proj=$(projdir "$cwd")
+  if [[ ! -d $proj ]]; then
+    echo "WARNING: no transcript dir for $cwd (expected $proj) — skipped"
+    continue
+  fi
+  n=${fallback_count[$cwd]}
+  find "$proj" -maxdepth 1 -name '*.jsonl' -printf '%T@\t%f\n' \
+    | sort -rn \
+    | while IFS=$'\t' read -r _t f; do
+        (( n > 0 )) || break
+        sid=${f%.jsonl}
+        [[ -n ${claimed_sid[$sid]:-} ]] && continue
+        printf '%s\t%s\tguessed\t%s\n' "$cwd" "$sid" "$(preview "$proj/$f")" >> "$SNAP"
+        (( n-- )) || true
+      done
+  (( n > 0 )) && echo "WARNING: $cwd: $n running claude(s) with no matching transcript"
+done
+
+sort -o "$SNAP" "$SNAP"
+echo "Snapshot written to $SNAP:"
+column -t -s $'\t' "$SNAP"
+echo ""
+if grep -q $'\tguessed\t' "$SNAP"; then
+  echo "Lines marked 'guessed' were matched by transcript freshness, not the hook"
+  echo "registry — check their previews against your open windows before rebooting."
+fi
+echo "You can reboot now. Afterwards run: claude-restore"
+```
+
+### `~/.local/bin/claude-restore`
+
+```zsh
+#!/usr/bin/env zsh
+# claude-restore — reopen every Claude Code session saved by claude-freeze.
+# Opens one Konsole window per session, running `claude --resume <session-id>`
+# in the session's original working directory.
+
+SNAP="$HOME/.claude/session-snapshot.tsv"
+CJ="$HOME/.claude.json"
+
+if [[ ! -s $SNAP ]]; then
+  echo "No snapshot found at $SNAP — run claude-freeze before rebooting."
+  exit 1
+fi
+
+# Pre-accept the workspace trust dialog for every directory we're about to
+# reopen, so 11 windows don't each stop on "do you trust this folder?".
+# Safe to rewrite ~/.claude.json here: right after a reboot no claude process
+# is running yet, so nothing else is writing the file.
+if command -v jq >/dev/null 2>&1 && [[ -f $CJ ]]; then
+  if pgrep -f '^claude( |$)' >/dev/null; then
+    echo "NOTE: claude is already running — skipping trust pre-accept to avoid"
+    echo "      clobbering ~/.claude.json (a running session may rewrite it)."
+  else
+    typeset -a dirs
+    dirs=(${(f)"$(cut -f1 "$SNAP" | sort -u)"})
+    filter=""
+    for d in $dirs; do
+      filter+=".projects[\"$d\"].hasTrustDialogAccepted = true | "
+    done
+    filter+="."
+    cp -f "$CJ" "$CJ.bak"
+    if jq "$filter" "$CJ" > "$CJ.tmp" && [[ -s $CJ.tmp ]]; then
+      mv -f "$CJ.tmp" "$CJ"
+      echo "Trust pre-accepted for: $dirs (backup: $CJ.bak)"
+    else
+      rm -f "$CJ.tmp"
+      echo "WARNING: could not update trust flags in $CJ — dialogs may appear."
+    fi
+  fi
+fi
+
+n=0
+while IFS=$'\t' read -r cwd id _rest; do
+  # Konsole prints harmless Qt DBus warnings ("Unsupported return type ...
+  # QPixmap in method grab") on startup — keep them out of this terminal.
+  konsole --workdir "$cwd" -e zsh -ic "claude --resume $id" >/dev/null 2>&1 &!
+  (( n++ ))
+  sleep 0.4   # space out window creation so KDE doesn't choke
+done < "$SNAP"
+
+echo "Opened $n Konsole windows."
+```

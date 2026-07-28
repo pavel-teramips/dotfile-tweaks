@@ -1,0 +1,50 @@
+#!/usr/bin/env zsh
+# claude-restore — reopen every Claude Code session saved by claude-freeze.
+# Opens one Konsole window per session, running `claude --resume <session-id>`
+# in the session's original working directory.
+
+SNAP="$HOME/.claude/session-snapshot.tsv"
+CJ="$HOME/.claude.json"
+
+if [[ ! -s $SNAP ]]; then
+  echo "No snapshot found at $SNAP — run claude-freeze before rebooting."
+  exit 1
+fi
+
+# Pre-accept the workspace trust dialog for every directory we're about to
+# reopen, so 11 windows don't each stop on "do you trust this folder?".
+# Safe to rewrite ~/.claude.json here: right after a reboot no claude process
+# is running yet, so nothing else is writing the file.
+if command -v jq >/dev/null 2>&1 && [[ -f $CJ ]]; then
+  if pgrep -f '^claude( |$)' >/dev/null; then
+    echo "NOTE: claude is already running — skipping trust pre-accept to avoid"
+    echo "      clobbering ~/.claude.json (a running session may rewrite it)."
+  else
+    typeset -a dirs
+    dirs=(${(f)"$(cut -f1 "$SNAP" | sort -u)"})
+    filter=""
+    for d in $dirs; do
+      filter+=".projects[\"$d\"].hasTrustDialogAccepted = true | "
+    done
+    filter+="."
+    cp -f "$CJ" "$CJ.bak"
+    if jq "$filter" "$CJ" > "$CJ.tmp" && [[ -s $CJ.tmp ]]; then
+      mv -f "$CJ.tmp" "$CJ"
+      echo "Trust pre-accepted for: $dirs (backup: $CJ.bak)"
+    else
+      rm -f "$CJ.tmp"
+      echo "WARNING: could not update trust flags in $CJ — dialogs may appear."
+    fi
+  fi
+fi
+
+n=0
+while IFS=$'\t' read -r cwd id _rest; do
+  # Konsole prints harmless Qt DBus warnings ("Unsupported return type ...
+  # QPixmap in method grab") on startup — keep them out of this terminal.
+  konsole --workdir "$cwd" -e zsh -ic "claude --resume $id" >/dev/null 2>&1 &!
+  (( n++ ))
+  sleep 0.4   # space out window creation so KDE doesn't choke
+done < "$SNAP"
+
+echo "Opened $n Konsole windows."

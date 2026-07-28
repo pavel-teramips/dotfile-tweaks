@@ -1,0 +1,94 @@
+#!/usr/bin/env zsh
+# claude-freeze — snapshot all running Claude Code sessions before a reboot.
+# Writes ~/.claude/session-snapshot.tsv (workdir <TAB> session-id <TAB> exact|guessed <TAB> preview).
+# Restore after reboot with: claude-restore
+#
+# Session identity comes from two sources:
+#   exact   — ~/.claude/live-sessions/ registry maintained by the SessionStart/
+#             SessionEnd hooks (session-registry.sh): pid <-> session id binding.
+#   guessed — for claudes with no registry entry (started before the hooks were
+#             installed): the N most recently modified transcripts in the
+#             directory's ~/.claude/projects/ folder. Verify via the preview.
+
+SNAP="$HOME/.claude/session-snapshot.tsv"
+REG="$HOME/.claude/live-sessions"
+
+# Running claude processes and their working directories (live kernel state —
+# an exited claude cannot appear here). Skips the chrome-native-host helper.
+typeset -A pid_cwd
+for pid in $(pgrep -f '^claude( |$)'); do
+  cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
+  pid_cwd[$pid]=$cwd
+done
+if (( ${#pid_cwd} == 0 )); then
+  echo "No running claude processes found — nothing to snapshot."
+  exit 1
+fi
+
+# Registry: oldest file first, so if one pid appears twice (e.g. after /clear
+# changed the session id) the newest registration wins. Entries whose pid is
+# gone are stale (crash/kill skipped SessionEnd) and get cleaned up.
+typeset -A pid_sid claimed_sid
+if [[ -d $REG ]]; then
+  for f in $(ls -tr "$REG" 2>/dev/null); do
+    IFS=$'\t' read -r rpid _rcwd < "$REG/$f"
+    if [[ -z ${pid_cwd[$rpid]:-} ]]; then
+      rm -f "$REG/$f"
+    else
+      pid_sid[$rpid]=$f
+    fi
+  done
+  for s in ${(v)pid_sid}; do claimed_sid[$s]=1; done
+fi
+
+preview() {  # $1 = transcript path -> "mtime | first user message"
+  local first mt
+  first=$(grep -a -m1 -o '"type":"user","message":{"role":"user","content":"[^"]\{1,60\}' "$1" 2>/dev/null | sed 's/.*content":"//')
+  mt=$(date -r "$1" '+%m-%d %H:%M' 2>/dev/null)
+  print -r -- "$mt | ${first:-(no text preview)}"
+}
+
+projdir() {  # $1 = cwd -> transcript dir (claude munges / and . to -)
+  print -r -- "$HOME/.claude/projects/${${1//\//-}//./-}"
+}
+
+: > "$SNAP"
+typeset -A fallback_count
+for pid in ${(k)pid_cwd}; do
+  cwd=${pid_cwd[$pid]}
+  if [[ -n ${pid_sid[$pid]:-} ]]; then
+    sid=${pid_sid[$pid]}
+    printf '%s\t%s\texact\t%s\n' "$cwd" "$sid" "$(preview "$(projdir $cwd)/$sid.jsonl")" >> "$SNAP"
+  else
+    fallback_count[$cwd]=$(( ${fallback_count[$cwd]:-0} + 1 ))
+  fi
+done
+
+for cwd in ${(k)fallback_count}; do
+  proj=$(projdir "$cwd")
+  if [[ ! -d $proj ]]; then
+    echo "WARNING: no transcript dir for $cwd (expected $proj) — skipped"
+    continue
+  fi
+  n=${fallback_count[$cwd]}
+  find "$proj" -maxdepth 1 -name '*.jsonl' -printf '%T@\t%f\n' \
+    | sort -rn \
+    | while IFS=$'\t' read -r _t f; do
+        (( n > 0 )) || break
+        sid=${f%.jsonl}
+        [[ -n ${claimed_sid[$sid]:-} ]] && continue
+        printf '%s\t%s\tguessed\t%s\n' "$cwd" "$sid" "$(preview "$proj/$f")" >> "$SNAP"
+        (( n-- )) || true
+      done
+  (( n > 0 )) && echo "WARNING: $cwd: $n running claude(s) with no matching transcript"
+done
+
+sort -o "$SNAP" "$SNAP"
+echo "Snapshot written to $SNAP:"
+column -t -s $'\t' "$SNAP"
+echo ""
+if grep -q $'\tguessed\t' "$SNAP"; then
+  echo "Lines marked 'guessed' were matched by transcript freshness, not the hook"
+  echo "registry — check their previews against your open windows before rebooting."
+fi
+echo "You can reboot now. Afterwards run: claude-restore"
