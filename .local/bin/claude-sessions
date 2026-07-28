@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""claude-sessions — enumerate running Claude Code sessions exactly.
+
+For each running `claude` process, scans its heap/anonymous memory
+(/proc/<pid>/mem) for transcript filenames (<uuid>.jsonl). The session the
+process owns appears many times (the path is rebuilt on every transcript
+append); other sessions' ids (e.g. seen once in a --resume picker) appear
+rarely. The most frequent uuid wins; the runner-up count is shown so you can
+judge confidence.
+
+Needs root: ptrace_scope=1 forbids reading another process's memory otherwise.
+
+Output (TSV): pid  cwd  session_id  hits  runner_up_hits
+"""
+import os
+import re
+import sys
+
+PAT = re.compile(rb'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl')
+CHUNK = 16 * 1024 * 1024
+OVERLAP = 64
+
+
+def claude_pids():
+    pids = []
+    for entry in os.listdir('/proc'):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f'/proc/{entry}/cmdline', 'rb') as f:
+                argv0 = f.read().split(b'\0')[0]
+        except OSError:
+            continue
+        if argv0 == b'claude':
+            pids.append(int(entry))
+    return pids
+
+
+def scan(pid):
+    counts = {}
+    try:
+        with open(f'/proc/{pid}/maps') as f:
+            maps = f.read().splitlines()
+        mem = open(f'/proc/{pid}/mem', 'rb')
+    except OSError as e:
+        print(f'ERROR: cannot open pid {pid} memory: {e}', file=sys.stderr)
+        return counts
+    with mem:
+        for line in maps:
+            parts = line.split()
+            perms = parts[1]
+            path = parts[5] if len(parts) > 5 else ''
+            # writable anon regions, heap and stack — where V8 keeps strings;
+            # skip file-backed mappings and special kernel regions
+            if not perms.startswith('rw'):
+                continue
+            if path and path not in ('[heap]', '[stack]'):
+                continue
+            start, end = (int(x, 16) for x in parts[0].split('-'))
+            pos = start
+            while pos < end:
+                length = min(CHUNK, end - pos)
+                try:
+                    mem.seek(pos)
+                    data = mem.read(length + OVERLAP if pos + length < end else length)
+                except (OSError, ValueError):
+                    break
+                for m in PAT.finditer(data):
+                    u = m.group(1).decode()
+                    counts[u] = counts.get(u, 0) + 1
+                pos += length
+    return counts
+
+
+def main():
+    if os.geteuid() != 0:
+        sys.exit('claude-sessions must run as root (sudo claude-sessions) — '
+                 'reading other processes\' memory needs ptrace rights.')
+    for pid in sorted(claude_pids()):
+        try:
+            cwd = os.readlink(f'/proc/{pid}/cwd')
+        except OSError:
+            continue
+        counts = scan(pid)
+        if not counts:
+            print(f'{pid}\t{cwd}\t?\t0\t0')
+            continue
+        ranked = sorted(counts.items(), key=lambda kv: -kv[1])
+        sid, hits = ranked[0]
+        runner = ranked[1][1] if len(ranked) > 1 else 0
+        print(f'{pid}\t{cwd}\t{sid}\t{hits}\t{runner}')
+
+
+if __name__ == '__main__':
+    main()
