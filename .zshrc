@@ -4,6 +4,9 @@
 export PATH="$HOME/.local/bin:$PATH"
 export EDITOR="${EDITOR:-nvim}"
 
+# ---------- Grok CLI ----------
+[[ -f "$HOME/.config/grok/env" ]] && source "$HOME/.config/grok/env"
+
 # ---------- History ----------
 HISTFILE="$HOME/.zsh_history"
 HISTSIZE=100000
@@ -84,10 +87,15 @@ alias ll='eza -la --group-directories-first'
 alias la='eza -a'
 alias lt='eza --tree --level=2'
 alias bex='cd ~/dev/bex'
+alias בקס='qdbus6 org.kde.keyboard /Layouts setLayout 0; bex'  # typed "bex" while on Hebrew layout
 alias teramips='ssh pavelr@sftp.teramips.com'
+alias tmips='ssh pavelr@sftp.teramips.com'
+alias m1='ssh pavel@m1sbc'
+alias m1sbc='ssh pavel@m1sbc'
 alias bigbex1='ssh pavel@bigbex1.bexrobotics.com'
 alias grep='grep --color=auto'
 alias clip='xclip -selection clipboard'
+alias sauu='sudo apt update && sudo apt upgrade'
 
 if command -v batcat >/dev/null 2>&1; then
   alias bat='batcat'
@@ -143,3 +151,10 @@ alias ..='cd ..'
 alias ...='cd ../..'
 alias ....='cd ../../..'
 alias .....='cd ../../../..'
+
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+fpath=(~/.grok/completions/zsh $fpath)
+autoload -Uz compinit && compinit -C
+# <<< grok installer <<<
