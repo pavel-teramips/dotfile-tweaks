@@ -21,6 +21,7 @@ running Claude Code sessions across a reboot, see
 | `.local/bin/claude-freeze` | `~/.local/bin/claude-freeze` | Snapshots every running Claude Code session before a reboot |
 | `.local/bin/claude-restore` | `~/.local/bin/claude-restore` | Reopens each snapshotted session in its own Konsole window |
 | `.local/bin/claude-sessions` | `~/.local/bin/claude-sessions` | Unused experiment — scans process memory for session ids (needs `sudo`, unreliable) |
+| `.local/bin/battery-mode` | `~/.local/bin/battery-mode` | Switches the ThinkPad charge thresholds between normal (75%) and travel (95%) modes |
 | `.claude/session-registry.sh` | `~/.claude/session-registry.sh` | Unused — SessionStart/SessionEnd hook that would make session identification exact |
 
 `settings.json.example` is a sanitized template — drop it in as
@@ -52,6 +53,10 @@ cp .claude/settings.json.example ~/.claude/settings.json
 mkdir -p ~/.local/bin
 cp .local/bin/claude-freeze .local/bin/claude-restore ~/.local/bin/
 chmod +x ~/.local/bin/claude-freeze ~/.local/bin/claude-restore
+
+# ThinkPad battery charge mode (requires TLP)
+cp .local/bin/battery-mode ~/.local/bin/
+chmod +x ~/.local/bin/battery-mode
 ```
 
 ## Keeping in sync

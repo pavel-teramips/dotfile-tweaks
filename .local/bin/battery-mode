@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly NORMAL_START=70
+readonly NORMAL_STOP=75
+readonly TRAVEL_START=90
+readonly TRAVEL_STOP=95
+readonly BATTERY=BAT0
+readonly POWER_PATH="/sys/class/power_supply/${BATTERY}"
+readonly TLP_MODE_CONFIG=/etc/tlp.d/10-battery-mode.conf
+
+usage() {
+    cat <<'EOF'
+Usage: battery-mode normal|travel|toggle|status
+
+  normal  Preserve battery health; charge between 70% and 75%
+  travel  Prepare for travel; charge between 90% and 95%
+  toggle  Switch between normal and travel mode
+  status  Show the current charge limit and battery state
+EOF
+}
+
+read_value() {
+    local primary=$1 fallback=$2
+    if [[ -r "${POWER_PATH}/${primary}" ]]; then
+        cat "${POWER_PATH}/${primary}"
+    else
+        cat "${POWER_PATH}/${fallback}"
+    fi
+}
+
+show_status() {
+    local start stop capacity state mode
+    start=$(read_value charge_control_start_threshold charge_start_threshold)
+    stop=$(read_value charge_control_end_threshold charge_stop_threshold)
+    capacity=$(<"${POWER_PATH}/capacity")
+    state=$(<"${POWER_PATH}/status")
+
+    if (( stop >= 90 )); then
+        mode=travel
+    else
+        mode=normal
+    fi
+
+    printf 'Mode: %s | Charge range: %s-%s%% | Battery: %s%% (%s)\n' \
+        "$mode" "$start" "$stop" "$capacity" "$state"
+}
+
+set_mode() {
+    local mode=$1 start stop config_file
+    case "$mode" in
+        normal)
+            start=$NORMAL_START
+            stop=$NORMAL_STOP
+            ;;
+        travel)
+            start=$TRAVEL_START
+            stop=$TRAVEL_STOP
+            ;;
+        *)
+            usage >&2
+            exit 2
+            ;;
+    esac
+
+    printf 'Switching to %s mode (%s-%s%%)...\n' "$mode" "$start" "$stop"
+    config_file=$(mktemp)
+    trap 'rm -f "$config_file"' RETURN
+    printf '%s\n' \
+        '# Managed by battery-mode; manual edits will be replaced.' \
+        "START_CHARGE_THRESH_${BATTERY}=${start}" \
+        "STOP_CHARGE_THRESH_${BATTERY}=${stop}" >"$config_file"
+
+    # Save the selection for subsequent boots, then apply it immediately.
+    sudo install -o root -g root -m 0644 "$config_file" "$TLP_MODE_CONFIG"
+    sudo tlp setcharge "$start" "$stop" "$BATTERY"
+    show_status
+
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send "Battery: ${mode} mode" "Charge limit set to ${stop}%"
+    fi
+}
+
+if [[ ! -d "$POWER_PATH" ]]; then
+    printf 'Error: battery %s was not found.\n' "$BATTERY" >&2
+    exit 1
+fi
+
+case "${1:-status}" in
+    normal|travel)
+        set_mode "$1"
+        ;;
+    toggle)
+        current_stop=$(read_value charge_control_end_threshold charge_stop_threshold)
+        if (( current_stop >= 90 )); then
+            set_mode normal
+        else
+            set_mode travel
+        fi
+        ;;
+    status)
+        show_status
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

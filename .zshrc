@@ -87,7 +87,7 @@ alias ll='eza -la --group-directories-first'
 alias la='eza -a'
 alias lt='eza --tree --level=2'
 alias bex='cd ~/dev/bex'
-alias בקס='qdbus6 org.kde.keyboard /Layouts setLayout 0; bex'  # typed "bex" while on Hebrew layout
+alias נקס='qdbus6 org.kde.keyboard /Layouts setLayout 0; bex'  # typed "bex" while on Hebrew layout
 alias teramips='ssh pavelr@sftp.teramips.com'
 alias tmips='ssh pavelr@sftp.teramips.com'
 alias m1='ssh pavel@m1sbc'
